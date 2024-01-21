@@ -28,6 +28,7 @@
 #include "TypePromotionInMathFnCheck.h"
 #include "UnnecessaryCopyInitialization.h"
 #include "UnnecessaryValueParamCheck.h"
+#include "VectorPessimizationCheck.h"
 
 namespace clang::tidy {
 namespace performance {
@@ -70,6 +71,8 @@ public:
         "performance-unnecessary-copy-initialization");
     CheckFactories.registerCheck<UnnecessaryValueParamCheck>(
         "performance-unnecessary-value-param");
+    CheckFactories.registerCheck<VectorPessimizationCheck>(
+        "performance-vector-pessimization");
   }
 };
 

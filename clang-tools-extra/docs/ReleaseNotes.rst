@@ -246,6 +246,11 @@ New checks
 
   Detects redundant ``inline`` specifiers on function and variable declarations.
 
+- New :doc:`performance-vector-pessimization
+  <clang-tidy/checks/performance/vector-pessimization>` check.
+
+  FIXME: add release notes.
+
 - New :doc:`readability-reference-to-constructed-temporary
   <clang-tidy/checks/readability/reference-to-constructed-temporary>` check.
 

@@ -25,6 +25,7 @@ add_clang_library(clangTidyPerformanceModule
   TypePromotionInMathFnCheck.cpp
   UnnecessaryCopyInitialization.cpp
   UnnecessaryValueParamCheck.cpp
+  VectorPessimizationCheck.cpp
 
   LINK_LIBS
   clangTidy
