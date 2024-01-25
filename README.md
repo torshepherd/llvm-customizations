@@ -1,44 +1,39 @@
-# The LLVM Compiler Infrastructure
+# Tor's LLVM modifications
 
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/llvm/llvm-project/badge)](https://securityscorecards.dev/viewer/?uri=github.com/llvm/llvm-project)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8273/badge)](https://www.bestpractices.dev/projects/8273)
-[![libc++](https://github.com/llvm/llvm-project/actions/workflows/libcxx-build-and-test.yaml/badge.svg?branch=main&event=schedule)](https://github.com/llvm/llvm-project/actions/workflows/libcxx-build-and-test.yaml?query=event%3Aschedule)
+This repo is my running contributions and personal changes to `clangd` and `clang-tidy`. I'll try to merge as many of my updates as are accepted upstream to https://github.com/llvm/llvm-project.
 
-Welcome to the LLVM project!
+## `clangd` features:
 
-This repository contains the source code for LLVM, a toolkit for the
-construction of highly optimized compilers, optimizers, and run-time
-environments.
+### swap binary operands
 
-The LLVM project has multiple components. The core of the project is
-itself called "LLVM". This contains all of the tools, libraries, and header
-files needed to process intermediate representations and convert them into
-object files. Tools include an assembler, disassembler, bitcode analyzer, and
-bitcode optimizer.
+https://github.com/torshepherd/llvm-customizations/assets/49597791/778b35b9-0ab2-4378-b1bb-2bb990cec14d
 
-C-like languages use the [Clang](http://clang.llvm.org/) frontend. This
-component compiles C, C++, Objective-C, and Objective-C++ code into LLVM bitcode
--- and from there into object files, using LLVM.
+## `clang-tidy` checks:
 
-Other components include:
-the [libc++ C++ standard library](https://libcxx.llvm.org),
-the [LLD linker](https://lld.llvm.org), and more.
+### `performance-vector-pessimization`
 
-## Getting the Source Code and Building LLVM
+![image](https://github.com/torshepherd/llvm-customizations/assets/49597791/a6792592-53d0-46eb-9769-e1509bacc4b0)
 
-Consult the
-[Getting Started with LLVM](https://llvm.org/docs/GettingStarted.html#getting-the-source-code-and-building-llvm)
-page for information on building and running LLVM.
+## Planned future work:
 
-For information on how to contribute to the LLVM project, please take a look at
-the [Contributing to LLVM](https://llvm.org/docs/Contributing.html) guide.
-
-## Getting in touch
-
-Join the [LLVM Discourse forums](https://discourse.llvm.org/), [Discord
-chat](https://discord.gg/xS7Z362),
-[LLVM Office Hours](https://llvm.org/docs/GettingInvolved.html#office-hours) or
-[Regular sync-ups](https://llvm.org/docs/GettingInvolved.html#online-sync-ups).
-
-The LLVM project has adopted a [code of conduct](https://llvm.org/docs/CodeOfConduct.html) for
-participants to all modes of communication within the project.
+- `modernize-use-views-enumerate`: transform index-based for loops with end condition of `.size()` that use the index and also use the value at the index to range-based for loops with `| std::views::enumerate`
+- `modernize-use-views-iota`: transform index-based for loops that start from an integral `start` and go to an integral `end` to range-based for loops with `std::views::iota(start, end)`
+- `modernize-use-views-zip`: transform index-based for loops with end condition of `.size()` that use the value from two ranges `r1` and `r2` at the index to range-based for loops with `std::views::zip(r1, r2)`
+- `modernize-use-ctad`: transform `make_` functions to class-template-argument-deduction: `std::make_optional(2)` -> `std::optional(2)`
+- `misc-use-static-or-inline-constexpr`: suggest transforming global `constexpr` variables in header files to `inline constexpr` and global variables in source files or function-level variables to `static constexpr`
+- `performance-use-array`: In cases with compile-known length of std::vector, change type to array instead
+- `bugprone-move-reference-capture`: Suggest move captures for vars captured by reference which are later moved in the lambda iff the lambda is not immediately-invoked
+- `bugprone-use-midpoint`: Suggest to use `std::midpoint(x, y)` instead of manual `x + y / 2`
+- `performance-initializer-list`: In cases where vector is instantiated with the initializer-list ctor and the type is not trivially copyable, suggest using emplace back instead: `std::vector<T> vec{t1, t2, t3}` -> `std::vector<T> vec = [&]{std::vector<T> out{}; out.emplace_back(t1); out.emplace_back(t2); out.emplace_back(t3); return out;}()`
+- Add "swap parameters" code action to clangd
+- Add "extract constraints to concept" code action to clangd
+- Add "move concept to requires clause" code action to clangd
+- Add "fix all" and "fix all from _" quick fixes to clangd
+- Add code action to convert include to forward-declarations
+- Extract to lambda instead of function
+- Inlay hints for lambda captures
+- Inlay hints for size of included file
+- Convert block comment to multiline comment & vice versa
+- Convert member function qualifiers into explicit `this` parameter
+- Convert eager monadic functions to lazy versions
+- Autocomplete for #include should use fuzzy path finder
