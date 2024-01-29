@@ -19,6 +19,7 @@ https://github.com/torshepherd/llvm-customizations/assets/49597791/778b35b9-0ab2
 - `modernize-use-views-enumerate`: transform index-based for loops with end condition of `.size()` that use the index and also use the value at the index to range-based for loops with `| std::views::enumerate`
 - `modernize-use-views-iota`: transform index-based for loops that start from an integral `start` and go to an integral `end` to range-based for loops with `std::views::iota(start, end)`
 - `modernize-use-views-zip`: transform index-based for loops with end condition of `.size()` that use the value from two ranges `r1` and `r2` at the index to range-based for loops with `std::views::zip(r1, r2)`
+- `modernize-use-views-concat`: transform consecutive range-based for loops with the same element type to a single for loop with `std::views::concat(r1, r2)`
 - `modernize-use-ctad`: transform `make_` functions to class-template-argument-deduction: `std::make_optional(2)` -> `std::optional(2)`
   - With config option to use braced-init or paren-init
 - `misc-use-static-or-inline-constexpr`: suggest transforming global `constexpr` variables in header files to `inline constexpr` and global variables in source files or function-level variables to `static constexpr`
