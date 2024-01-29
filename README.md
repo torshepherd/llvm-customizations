@@ -39,3 +39,4 @@ https://github.com/torshepherd/llvm-customizations/assets/49597791/778b35b9-0ab2
 - Convert member function qualifiers into explicit `this` parameter
 - Convert eager monadic functions to lazy versions
 - Autocomplete for #include should use fuzzy path finder
+- Compute enum underlying values on hover
