@@ -40,3 +40,4 @@ https://github.com/torshepherd/llvm-customizations/assets/49597791/778b35b9-0ab2
 - Convert eager monadic functions to lazy versions
 - Autocomplete for #include should use fuzzy path finder
 - Compute enum underlying values on hover
+  - For instance, see `llvm/include/llvm/ADT/SparseBitVector.h`, and hover over the enum values `BITS_PER_ELEMENT`
