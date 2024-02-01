@@ -87,7 +87,10 @@ Config noHintsConfig() {
   C.InlayHints.DeducedTypes = false;
   C.InlayHints.Designators = false;
   C.InlayHints.BlockEnd = false;
+  C.InlayHints.LambdaCaptures = false;
+  C.InlayHints.DefaultInitializations = false;
   C.InlayHints.DefaultArguments = false;
+  C.InlayHints.ImplicitThis = false;
   return C;
 }
 
@@ -1483,22 +1486,25 @@ TEST(TypeHints, DefaultTemplateArgs) {
     struct A {};
     A<float> foo();
     auto $var[[var]] = foo();
-    A<float> bar[1];
+    A<float> baz;
+    A<float> bar[1]{};
     auto [$binding[[value]]] = bar;
   )cpp",
                   ExpectedHint{": A<float>", "var"},
                   ExpectedHint{": A<float>", "binding"});
 }
 
-TEST(DefaultArguments, Smoke) {
+TEST(LambdaCaptures, Smoke) {
   Config Cfg;
-  Cfg.InlayHints.Parameters =
-      true; // To test interplay of parameters and default parameters
+  Cfg.InlayHints.Parameters = false;
   Cfg.InlayHints.DeducedTypes = false;
   Cfg.InlayHints.Designators = false;
   Cfg.InlayHints.BlockEnd = false;
+  Cfg.InlayHints.DefaultInitializations = false;
+  Cfg.InlayHints.DefaultArguments = false;
 
-  Cfg.InlayHints.DefaultArguments = true;
+  Cfg.InlayHints.LambdaCaptures = true;
+  Cfg.InlayHints.TypeNameLimit = 10;
   WithContextValue WithCfg(Config::Key, std::move(Cfg));
 
   const auto *Code = R"cpp(
@@ -1518,35 +1524,23 @@ TEST(DefaultArguments, Smoke) {
               ExpectedHint{"A: ", "explicit", Left});
 }
 
-TEST(DefaultArguments, WithoutParameterNames) {
+TEST(DefaultArguments, Smoke) {
   Config Cfg;
-  Cfg.InlayHints.Parameters = false; // To test just default args this time
+  Cfg.InlayHints.Parameters =
+      true; // To test interplay of parameters and default parameters
   Cfg.InlayHints.DeducedTypes = false;
   Cfg.InlayHints.Designators = false;
   Cfg.InlayHints.BlockEnd = false;
+  Cfg.InlayHints.LambdaCaptures = false;
+  Cfg.InlayHints.DefaultInitializations = false;
 
   Cfg.InlayHints.DefaultArguments = true;
   WithContextValue WithCfg(Config::Key, std::move(Cfg));
 
   const auto *Code = R"cpp(
-    struct Baz {
-      Baz(float a = 3 //
-                    + 2);
-    };
-    struct Foo {
-      Foo(int, Baz baz = //
-              Baz{$abbreviated[[}]]
-
-          //
-      ) {}
-    };
-
-    int main() {
-      Foo foo1(1$paren[[)]];
-      Foo foo2{2$brace1[[}]];
-      Foo foo3 = {3$brace2[[}]];
-      auto foo4 = Foo{4$brace3[[}]];
-    }
+    int foo(int A = 4) { return A; }
+    int bar(int A, int B = 1, bool C = foo($default1[[)]]) { return A; }
+    int A = bar($explicit[[2]]$default2[[)]];
   )cpp";
 
   assertHints(InlayHintKind::DefaultArgument, Code, DefaultOptsForTests,
@@ -1681,7 +1675,7 @@ TEST(TypeHints, SubstTemplateParameterAliases) {
   )cpp";
 
   llvm::StringRef VectorIntPtr = R"cpp(
-    vector<int *> array;
+    vector<int *> $init[[array]];
     auto $no_modifier[[x]] = array[3];
     auto* $ptr_modifier[[ptr]] = &array[3];
     auto& $ref_modifier[[ref]] = array[3];
@@ -1705,7 +1699,7 @@ TEST(TypeHints, SubstTemplateParameterAliases) {
       ExpectedHint{": non_template_iterator", "end"});
 
   llvm::StringRef VectorInt = R"cpp(
-  vector<int> array;
+  vector<int> $init[[array]];
   auto $no_modifier[[by_value]] = array[3];
   auto* $ptr_modifier[[ptr]] = &array[3];
   auto& $ref_modifier[[ref]] = array[3];
@@ -1855,7 +1849,7 @@ TEST(ParameterHints, PseudoObjectExpr) {
     int printf(const char *Format, ...);
 
     int main() {
-      S s;
+      S $init[[s]];
       __builtin_dump_struct(&s, printf); // Not `Format: __builtin_dump_struct()`
       printf($Param[["Hello, %d"]], 42); // Normal calls are not affected.
       // This builds a PseudoObjectExpr, but here it's useful for showing the
