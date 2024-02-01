@@ -15,14 +15,17 @@
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclBase.h"
+#include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/LambdaCapture.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Basic/Lambda.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -381,20 +384,31 @@ maybeDropCxxExplicitObjectParameters(ArrayRef<const ParmVarDecl *> Params) {
   return Params;
 }
 
-template <typename R>
-std::string joinAndTruncate(const R &Range, size_t MaxLength) {
+llvm::StringRef getLambdaCaptureName(const LambdaCapture &Capture) {
+  if (Capture.capturesVariable())
+    return Capture.getCapturedVar()->getName();
+  if (Capture.capturesThis())
+    return llvm::StringRef{"this"};
+  return llvm::StringRef{"unknown"};
+}
+
+template <typename R, typename P>
+std::string joinAndTruncate(R &&Range, size_t MaxLength,
+                            P &&GetAsStringFunction) {
   std::string Out;
-  llvm::raw_string_ostream OS(Out);
-  llvm::ListSeparator Sep(", ");
+  bool IsFirst = true;
   for (auto &&Element : Range) {
-    OS << Sep;
-    if (Out.size() + Element.size() >= MaxLength) {
-      OS << "...";
+    if (!IsFirst)
+      Out.append(", ");
+    else
+      IsFirst = false;
+    auto AsString = GetAsStringFunction(Element);
+    if (Out.size() + AsString.size() >= MaxLength) {
+      Out.append("...");
       break;
     }
-    OS << Element;
+    Out.append(AsString);
   }
-  OS.flush();
   return Out;
 }
 
@@ -476,6 +490,13 @@ public:
       return true;
     // FIXME: Handle other forms of a pseudo object expression.
     return RecursiveASTVisitor<InlayHintVisitor>::TraversePseudoObjectExpr(E);
+  }
+
+  bool VisitCXXThisExpr(CXXThisExpr *CTE) {
+    if (Cfg.InlayHints.ImplicitThis && CTE->isImplicit())
+      addInlayHint(CTE->getLocation(), HintSide::Left,
+                   InlayHintKind::ImplicitThis, "", "this->", "");
+    return true;
   }
 
   bool VisitCallExpr(CallExpr *E) {
@@ -625,6 +646,15 @@ public:
   }
 
   bool VisitLambdaExpr(LambdaExpr *E) {
+    if (Cfg.InlayHints.LambdaCaptures && E->getCaptureDefault() != LCD_None &&
+        !E->implicit_captures().empty()) {
+      std::string FormattedCaptureList =
+          joinAndTruncate(E->implicit_captures(), Cfg.InlayHints.TypeNameLimit,
+                          [](const LambdaCapture &ImplicitCapture) {
+                            return getLambdaCaptureName(ImplicitCapture);
+                          });
+      addImplicitCaptureHint(E->getCaptureDefaultLoc(), FormattedCaptureList);
+    }
     FunctionDecl *D = E->getCallOperator();
     if (!E->hasExplicitResultType()) {
       SourceLocation TypeHintLoc;
@@ -646,6 +676,14 @@ public:
   }
 
   bool VisitVarDecl(VarDecl *D) {
+    if (Cfg.InlayHints.DefaultInitializations && D->hasInit() &&
+        isa<CXXConstructExpr>(D->getInit()) &&
+        !llvm::dyn_cast<CXXConstructExpr>(D->getInit())
+             ->getParenOrBraceRange()
+             .isValid())
+      addInlayHint(D->getEndLoc(), HintSide::Right, InlayHintKind::DefaultInit,
+                   "", "{}", "");
+
     // Do not show hints for the aggregate in a structured binding,
     // but show hints for the individual bindings.
     if (auto *DD = dyn_cast<DecompositionDecl>(D)) {
@@ -741,7 +779,7 @@ public:
 private:
   using NameVec = SmallVector<StringRef, 8>;
 
-  void processCall(Callee Callee, SourceLocation RParenOrBraceLoc,
+  void processCall(Callee Callee, SourceRange LParenOrBraceRange,
                    llvm::ArrayRef<const Expr *> Args) {
     assert(Callee.Decl || Callee.Loc);
 
@@ -789,31 +827,23 @@ private:
       }
 
       StringRef Name = ParameterNames[I];
-      const bool NameHint =
-          shouldHintName(Args[I], Name) && Cfg.InlayHints.Parameters;
-      const bool ReferenceHint =
-          shouldHintReference(Params[I], ForwardedParams[I]) &&
-          Cfg.InlayHints.Parameters;
+      bool NameHint = shouldHintName(Args[I], Name);
+      bool ReferenceHint = shouldHintReference(Params[I], ForwardedParams[I]);
 
-      const bool IsDefault = isa<CXXDefaultArgExpr>(Args[I]);
+      bool IsDefault = isa<CXXDefaultArgExpr>(Args[I]);
       HasNonDefaultArgs |= !IsDefault;
-      if (IsDefault) {
-        if (Cfg.InlayHints.DefaultArguments) {
-          const auto SourceText = Lexer::getSourceText(
-              CharSourceRange::getTokenRange(Params[I]->getDefaultArgRange()),
-              AST.getSourceManager(), AST.getLangOpts());
-          const auto Abbrev =
-              (SourceText.size() > Cfg.InlayHints.TypeNameLimit ||
-               SourceText.contains("\n"))
-                  ? "..."
-                  : SourceText;
-          if (NameHint)
-            FormattedDefaultArgs.emplace_back(
-                llvm::formatv("{0}: {1}", Name, Abbrev));
-          else
-            FormattedDefaultArgs.emplace_back(llvm::formatv("{0}", Abbrev));
-        }
-      } else if (NameHint || ReferenceHint) {
+      if (Cfg.InlayHints.DefaultArguments && IsDefault) {
+        auto SourceText = Lexer::getSourceText(
+            CharSourceRange::getTokenRange(Params[I]->getDefaultArgRange()),
+            Callee.Decl->getASTContext().getSourceManager(),
+            Callee.Decl->getASTContext().getLangOpts());
+        FormattedDefaultArgs.emplace_back(llvm::formatv(
+            "{0} = {1}", Name,
+            SourceText.size() > Cfg.InlayHints.TypeNameLimit ? "..."
+                                                             : SourceText));
+      }
+
+      if (NameHint || ReferenceHint) {
         addInlayHint(Args[I]->getSourceRange(), HintSide::Left,
                      InlayHintKind::Parameter, ReferenceHint ? "&" : "",
                      NameHint ? Name : "", ": ");
@@ -822,8 +852,9 @@ private:
 
     if (!FormattedDefaultArgs.empty()) {
       std::string Hint =
-          joinAndTruncate(FormattedDefaultArgs, Cfg.InlayHints.TypeNameLimit);
-      addInlayHint(SourceRange{RParenOrBraceLoc}, HintSide::Left,
+          joinAndTruncate(FormattedDefaultArgs, Cfg.InlayHints.TypeNameLimit,
+                          [](const auto &E) { return E; });
+      addInlayHint(LParenOrBraceRange, HintSide::Left,
                    InlayHintKind::DefaultArgument,
                    HasNonDefaultArgs ? ", " : "", Hint, "");
     }
@@ -1034,7 +1065,10 @@ private:
       CHECK_KIND(Type, DeducedTypes);
       CHECK_KIND(Designator, Designators);
       CHECK_KIND(BlockEnd, BlockEnd);
+      CHECK_KIND(LambdaCapture, LambdaCaptures);
       CHECK_KIND(DefaultArgument, DefaultArguments);
+      CHECK_KIND(DefaultInit, DefaultInitializations);
+      CHECK_KIND(ImplicitThis, ImplicitThis);
 #undef CHECK_KIND
     }
 
@@ -1086,6 +1120,11 @@ private:
   void addDesignatorHint(SourceRange R, llvm::StringRef Text) {
     addInlayHint(R, HintSide::Left, InlayHintKind::Designator,
                  /*Prefix=*/"", Text, /*Suffix=*/"=");
+  }
+
+  void addImplicitCaptureHint(SourceRange R, llvm::StringRef Text) {
+    addInlayHint(R, HintSide::Right, InlayHintKind::LambdaCapture,
+                 /*Prefix=*/": ", Text, /*Suffix=*/"");
   }
 
   bool shouldPrintTypeHint(llvm::StringRef TypeName) const noexcept {

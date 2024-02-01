@@ -356,9 +356,15 @@ struct Fragment {
     std::optional<Located<bool>> Designators;
     /// Show defined symbol names at the end of a definition block.
     std::optional<Located<bool>> BlockEnd;
+    /// Show names of captured variables by default capture groups in lambdas.
+    std::optional<Located<bool>> LambdaCaptures;
+    /// Show curly braces at the end of implicit default initializations.
+    std::optional<Located<bool>> DefaultInitializations;
     /// Show parameter names and default values of default arguments after all
     /// of the explicit arguments.
     std::optional<Located<bool>> DefaultArguments;
+    /// Show implicit dereferencing of this pointer.
+    std::optional<Located<bool>> ImplicitThis;
     /// Limit the length of type name hints. (0 means no limit)
     std::optional<Located<uint32_t>> TypeNameLimit;
   };

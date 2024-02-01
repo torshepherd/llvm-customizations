@@ -552,10 +552,10 @@ struct FragmentCompiler {
       auto Fast = isFastTidyCheck(Str);
       if (!Fast.has_value()) {
         diag(Warning,
-             llvm::formatv(
-                 "Latency of clang-tidy check '{0}' is not known. "
-                 "It will only run if ClangTidy.FastCheckFilter is Loose or None",
-                 Str)
+             llvm::formatv("Latency of clang-tidy check '{0}' is not known. "
+                           "It will only run if ClangTidy.FastCheckFilter is "
+                           "Loose or None",
+                           Str)
                  .str(),
              Arg.Range);
       } else if (!*Fast) {
@@ -717,10 +717,25 @@ struct FragmentCompiler {
       Out.Apply.push_back([Value(**F.BlockEnd)](const Params &, Config &C) {
         C.InlayHints.BlockEnd = Value;
       });
+    if (F.LambdaCaptures)
+      Out.Apply.push_back(
+          [Value(**F.LambdaCaptures)](const Params &, Config &C) {
+            C.InlayHints.LambdaCaptures = Value;
+          });
+    if (F.DefaultInitializations)
+      Out.Apply.push_back(
+          [Value(**F.DefaultInitializations)](const Params &, Config &C) {
+            C.InlayHints.DefaultInitializations = Value;
+          });
     if (F.DefaultArguments)
       Out.Apply.push_back(
           [Value(**F.DefaultArguments)](const Params &, Config &C) {
             C.InlayHints.DefaultArguments = Value;
+          });
+    if (F.ImplicitThis)
+      Out.Apply.push_back(
+          [Value(**F.ImplicitThis)](const Params &, Config &C) {
+            C.InlayHints.ImplicitThis = Value;
           });
     if (F.TypeNameLimit)
       Out.Apply.push_back(

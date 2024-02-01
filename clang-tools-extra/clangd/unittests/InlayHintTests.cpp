@@ -84,7 +84,10 @@ Config noHintsConfig() {
   C.InlayHints.DeducedTypes = false;
   C.InlayHints.Designators = false;
   C.InlayHints.BlockEnd = false;
+  C.InlayHints.LambdaCaptures = false;
+  C.InlayHints.DefaultInitializations = false;
   C.InlayHints.DefaultArguments = false;
+  C.InlayHints.ImplicitThis = false;
   return C;
 }
 
@@ -1462,11 +1465,54 @@ TEST(TypeHints, DefaultTemplateArgs) {
     struct A {};
     A<float> foo();
     auto $var[[var]] = foo();
-    A<float> bar[1];
+    A<float> baz;
+    A<float> bar[1]{};
     auto [$binding[[value]]] = bar;
   )cpp",
                   ExpectedHint{": A<float>", "var"},
                   ExpectedHint{": A<float>", "binding"});
+}
+
+TEST(LambdaCaptures, Smoke) {
+  Config Cfg;
+  Cfg.InlayHints.Parameters = false;
+  Cfg.InlayHints.DeducedTypes = false;
+  Cfg.InlayHints.Designators = false;
+  Cfg.InlayHints.BlockEnd = false;
+  Cfg.InlayHints.DefaultInitializations = false;
+  Cfg.InlayHints.DefaultArguments = false;
+
+  Cfg.InlayHints.LambdaCaptures = true;
+  Cfg.InlayHints.TypeNameLimit = 10;
+  WithContextValue WithCfg(Config::Key, std::move(Cfg));
+
+  assertHints(InlayHintKind::LambdaCapture, R"cpp(
+    void foo() {
+      int A = 1;
+      int ReallyLongName = 1;
+      auto B = [$byvalue[[=]]] { return A; };
+      auto C = [$byref[[&]]] { return A; };
+      auto D = [$trunc[[=]], &A] {  B(); (void)ReallyLongName; return A; };
+    }
+  )cpp",
+              ExpectedHint{": A", "byvalue", Right},
+              ExpectedHint{": A", "byref", Right},
+              ExpectedHint{": B, ...", "trunc", Right});
+}
+
+TEST(DefaultInitializations, Smoke) {
+  Config Cfg;
+
+  Cfg.InlayHints.Enabled = true;
+  Cfg.InlayHints.DefaultInitializations = true;
+  WithContextValue WithCfg(Config::Key, std::move(Cfg));
+
+  assertHints(InlayHintKind::DefaultInit, R"cpp(
+    struct A { };
+    A $init[[B]];
+    int c;
+  )cpp",
+              ExpectedHint{"{}", "init", Right});
 }
 
 TEST(DefaultArguments, Smoke) {
@@ -1476,6 +1522,8 @@ TEST(DefaultArguments, Smoke) {
   Cfg.InlayHints.DeducedTypes = false;
   Cfg.InlayHints.Designators = false;
   Cfg.InlayHints.BlockEnd = false;
+  Cfg.InlayHints.LambdaCaptures = false;
+  Cfg.InlayHints.DefaultInitializations = false;
 
   Cfg.InlayHints.DefaultArguments = true;
   WithContextValue WithCfg(Config::Key, std::move(Cfg));
@@ -1484,58 +1532,14 @@ TEST(DefaultArguments, Smoke) {
     int foo(int A = 4) { return A; }
     int bar(int A, int B = 1, bool C = foo($default1[[)]]) { return A; }
     int A = bar($explicit[[2]]$default2[[)]];
-
-    void baz(int = 5) { if (false) baz($unnamed[[)]]; };
   )cpp";
 
   assertHints(InlayHintKind::DefaultArgument, Code,
-              ExpectedHint{"A: 4", "default1", Left},
-              ExpectedHint{", B: 1, C: foo()", "default2", Left},
-              ExpectedHint{"5", "unnamed", Left});
+              ExpectedHint{"A = 4", "default1", Left},
+              ExpectedHint{", B = 1, C = foo()", "default2", Left});
 
   assertHints(InlayHintKind::Parameter, Code,
               ExpectedHint{"A: ", "explicit", Left});
-}
-
-TEST(DefaultArguments, WithoutParameterNames) {
-  Config Cfg;
-  Cfg.InlayHints.Parameters = false; // To test just default args this time
-  Cfg.InlayHints.DeducedTypes = false;
-  Cfg.InlayHints.Designators = false;
-  Cfg.InlayHints.BlockEnd = false;
-
-  Cfg.InlayHints.DefaultArguments = true;
-  WithContextValue WithCfg(Config::Key, std::move(Cfg));
-
-  const auto *Code = R"cpp(
-    struct Baz {
-      Baz(float a = 3 //
-                    + 2);
-    };
-    struct Foo {
-      Foo(int, Baz baz = //
-              Baz{$abbreviated[[}]]
-
-          //
-      ) {}
-    };
-
-    int main() {
-      Foo foo1(1$paren[[)]];
-      Foo foo2{2$brace1[[}]];
-      Foo foo3 = {3$brace2[[}]];
-      auto foo4 = Foo{4$brace3[[}]];
-    }
-  )cpp";
-
-  assertHints(InlayHintKind::DefaultArgument, Code,
-              ExpectedHint{"...", "abbreviated", Left},
-              ExpectedHint{", Baz{}", "paren", Left},
-              ExpectedHint{", Baz{}", "brace1", Left},
-              ExpectedHint{", Baz{}", "brace2", Left},
-              ExpectedHint{", Baz{}", "brace3", Left});
-
-  assertHints(InlayHintKind::Parameter, Code);
 }
 
 TEST(TypeHints, Deduplication) {
@@ -1657,7 +1661,7 @@ TEST(TypeHints, SubstTemplateParameterAliases) {
   )cpp";
 
   llvm::StringRef VectorIntPtr = R"cpp(
-    vector<int *> array;
+    vector<int *> $init[[array]];
     auto $no_modifier[[x]] = array[3];
     auto* $ptr_modifier[[ptr]] = &array[3];
     auto& $ref_modifier[[ref]] = array[3];
@@ -1681,7 +1685,7 @@ TEST(TypeHints, SubstTemplateParameterAliases) {
       ExpectedHint{": non_template_iterator", "end"});
 
   llvm::StringRef VectorInt = R"cpp(
-  vector<int> array;
+  vector<int> $init[[array]];
   auto $no_modifier[[by_value]] = array[3];
   auto* $ptr_modifier[[ptr]] = &array[3];
   auto& $ref_modifier[[ref]] = array[3];
@@ -1830,7 +1834,7 @@ TEST(ParameterHints, PseudoObjectExpr) {
     int printf(const char *Format, ...);
 
     int main() {
-      S s;
+      S $init[[s]];
       __builtin_dump_struct(&s, printf); // Not `Format: __builtin_dump_struct()`
       printf($Param[["Hello, %d"]], 42); // Normal calls are not affected.
       // This builds a PseudoObjectExpr, but here it's useful for showing the

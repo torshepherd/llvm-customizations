@@ -209,7 +209,7 @@ bool fromJSON(const llvm::json::Value &Params, ChangeAnnotation &R,
          O.map("needsConfirmation", R.needsConfirmation) &&
          O.mapOptional("description", R.description);
 }
-llvm::json::Value toJSON(const ChangeAnnotation & CA) {
+llvm::json::Value toJSON(const ChangeAnnotation &CA) {
   llvm::json::Object Result{{"label", CA.label}};
   if (CA.needsConfirmation)
     Result["needsConfirmation"] = *CA.needsConfirmation;
@@ -1516,7 +1516,10 @@ llvm::json::Value toJSON(const InlayHintKind &Kind) {
     return 2;
   case InlayHintKind::Designator:
   case InlayHintKind::BlockEnd:
+  case InlayHintKind::LambdaCapture:
   case InlayHintKind::DefaultArgument:
+  case InlayHintKind::DefaultInit:
+  case InlayHintKind::ImplicitThis:
     // This is an extension, don't serialize.
     return nullptr;
   }
@@ -1557,8 +1560,14 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, InlayHintKind Kind) {
       return "designator";
     case InlayHintKind::BlockEnd:
       return "block-end";
+    case InlayHintKind::LambdaCapture:
+      return "lambda-capture";
     case InlayHintKind::DefaultArgument:
       return "default-argument";
+    case InlayHintKind::DefaultInit:
+      return "default-init";
+    case InlayHintKind::ImplicitThis:
+      return "implicit-this";
     }
     llvm_unreachable("Unknown clang.clangd.InlayHintKind");
   };

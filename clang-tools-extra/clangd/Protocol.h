@@ -1688,14 +1688,35 @@ enum class InlayHintKind {
   /// This is a clangd extension.
   BlockEnd = 4,
 
+  /// An inlay hint that is for a variable captured implicitly in a lambda.
+  ///
+  /// An example of parameter hint for implicit lambda captures:
+  ///    [&^] { return A; };
+  /// Adds an inlay hint ": A".
+  LambdaCapture = 5,
+
   /// An inlay hint that is for a default argument.
   ///
   /// An example of a parameter hint for a default argument:
   ///    void foo(bool A = true);
   ///    foo(^);
-  /// Adds an inlay hint "A: true".
-  /// This is a clangd extension.
+  /// Adds an inlay hint "A = true".
   DefaultArgument = 6,
+
+  /// A hint for an implicit default initializer.
+  ///
+  /// An example of implicit default construction:
+  ///    MyObject O^;
+  /// Adds a hint for "{}".
+  DefaultInit = 7,
+
+  /// A hint for an implicit usage of this pointer.
+  ///
+  /// An example of implicit this pointer:
+  ///    struct MyObject { int foo; int bar(); };
+  ///    MyObject::foo() { return ^bar; }
+  /// Adds a hinted "this->".
+  ImplicitThis = 8,
 
   /// Other ideas for hints that are not currently implemented:
   ///

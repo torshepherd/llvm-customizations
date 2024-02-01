@@ -275,9 +275,21 @@ private:
       if (auto Value = boolValue(N, "BlockEnd"))
         F.BlockEnd = *Value;
     });
+    Dict.handle("LambdaCaptures", [&](Node &N) {
+      if (auto Value = boolValue(N, "LambdaCaptures"))
+        F.LambdaCaptures = *Value;
+    });
+    Dict.handle("DefaultInitializations", [&](Node &N) {
+      if (auto Value = boolValue(N, "DefaultInitializations"))
+        F.DefaultInitializations = *Value;
+    });
     Dict.handle("DefaultArguments", [&](Node &N) {
       if (auto Value = boolValue(N, "DefaultArguments"))
         F.DefaultArguments = *Value;
+    });
+    Dict.handle("ImplicitThis", [&](Node &N) {
+      if (auto Value = boolValue(N, "ImplicitThis"))
+        F.ImplicitThis = *Value;
     });
     Dict.handle("TypeNameLimit", [&](Node &N) {
       if (auto Value = uint32Value(N, "TypeNameLimit"))
