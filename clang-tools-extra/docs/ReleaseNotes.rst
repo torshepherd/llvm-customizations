@@ -100,6 +100,125 @@ Improvements to clang-tidy
 New checks
 ^^^^^^^^^^
 
+- New :doc:`bugprone-casting-through-void
+  <clang-tidy/checks/bugprone/casting-through-void>` check.
+
+  Detects unsafe or redundant two-step casting operations involving ``void*``.
+
+- New :doc:`bugprone-compare-pointer-to-member-virtual-function
+  <clang-tidy/checks/bugprone/compare-pointer-to-member-virtual-function>` check.
+
+  Detects equality comparison between pointer to member virtual function and
+  anything other than null-pointer-constant.
+
+- New :doc:`bugprone-inc-dec-in-conditions
+  <clang-tidy/checks/bugprone/inc-dec-in-conditions>` check.
+
+  Detects when a variable is both incremented/decremented and referenced inside
+  a complex condition and suggests moving them outside to avoid ambiguity in
+  the variable's value.
+
+- New :doc:`bugprone-incorrect-enable-if
+  <clang-tidy/checks/bugprone/incorrect-enable-if>` check.
+
+  Detects incorrect usages of ``std::enable_if`` that don't name the nested
+  ``type`` type.
+
+- New :doc:`bugprone-multi-level-implicit-pointer-conversion
+  <clang-tidy/checks/bugprone/multi-level-implicit-pointer-conversion>` check.
+
+  Detects implicit conversions between pointers of different levels of
+  indirection.
+
+- New :doc:`bugprone-optional-value-conversion
+  <clang-tidy/checks/bugprone/optional-value-conversion>` check.
+
+  Detects potentially unintentional and redundant conversions where a value is
+  extracted from an optional-like type and then used to create a new instance
+  of the same optional-like type.
+
+- New :doc:`bugprone-unused-local-non-trivial-variable
+  <clang-tidy/checks/bugprone/unused-local-non-trivial-variable>` check.
+
+  Warns when a local non trivial variable is unused within a function.
+
+- New :doc:`cppcoreguidelines-no-suspend-with-lock
+  <clang-tidy/checks/cppcoreguidelines/no-suspend-with-lock>` check.
+
+  Flags coroutines that suspend while a lock guard is in scope at the
+  suspension point.
+
+- New :doc:`hicpp-ignored-remove-result
+  <clang-tidy/checks/hicpp/ignored-remove-result>` check.
+
+  Ensure that the result of ``std::remove``, ``std::remove_if`` and
+  ``std::unique`` are not ignored according to rule 17.5.1.
+
+- New :doc:`misc-coroutine-hostile-raii
+  <clang-tidy/checks/misc/coroutine-hostile-raii>` check.
+
+  Detects when objects of certain hostile RAII types persists across suspension
+  points in a coroutine. Such hostile types include scoped-lockable types and
+  types belonging to a configurable denylist.
+
+- New :doc:`modernize-use-constraints
+  <clang-tidy/checks/modernize/use-constraints>` check.
+
+  Replace ``enable_if`` with C++20 requires clauses.
+
+- New :doc:`modernize-use-starts-ends-with
+  <clang-tidy/checks/modernize/use-starts-ends-with>` check.
+
+  Checks whether a ``find`` or ``rfind`` result is compared with 0 and suggests
+  replacing with ``starts_with`` when the method exists in the class. Notably,
+  this will work with ``std::string`` and ``std::string_view``.
+
+- New :doc:`modernize-use-std-numbers
+  <clang-tidy/checks/modernize/use-std-numbers>` check.
+
+  Finds constants and function calls to math functions that can be replaced
+  with C++20's mathematical constants from the ``numbers`` header and
+  offers fix-it hints.
+
+- New :doc:`performance-enum-size
+  <clang-tidy/checks/performance/enum-size>` check.
+
+  Recommends the smallest possible underlying type for an ``enum`` or ``enum``
+  class based on the range of its enumerators.
+
+- New :doc:`performance-vector-initializer-list
+  <clang-tidy/checks/performance/vector-initializer-list>` check.
+
+  FIXME: add release notes.
+
+- New :doc:`readability-avoid-nested-conditional-operator
+  <clang-tidy/checks/readability/avoid-nested-conditional-operator>` check.
+
+  Identifies instances of nested conditional operators in the code.
+
+- New :doc:`readability-avoid-return-with-void-value
+  <clang-tidy/checks/readability/avoid-return-with-void-value>` check.
+
+  Finds return statements with ``void`` values used within functions with
+  ``void`` result types.
+
+- New :doc:`readability-redundant-casting
+  <clang-tidy/checks/readability/redundant-casting>` check.
+
+  Detects explicit type casting operations that involve the same source and
+  destination types, and subsequently recommend their removal.
+  
+- New :doc:`readability-redundant-inline-specifier
+  <clang-tidy/checks/readability/redundant-inline-specifier>` check.
+
+  Detects redundant ``inline`` specifiers on function and variable declarations.
+
+- New :doc:`readability-reference-to-constructed-temporary
+  <clang-tidy/checks/readability/reference-to-constructed-temporary>` check.
+
+  Detects C++ code where a reference variable is used to extend the lifetime
+  of a temporary object that has just been constructed.
+
 New check aliases
 ^^^^^^^^^^^^^^^^^
 
