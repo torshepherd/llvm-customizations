@@ -36,6 +36,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/ScopedPrinter.h"
@@ -383,30 +384,34 @@ maybeDropCxxExplicitObjectParameters(ArrayRef<const ParmVarDecl *> Params) {
 }
 
 llvm::StringRef getLambdaCaptureName(const LambdaCapture &Capture) {
-  if (Capture.capturesVariable())
-    return Capture.getCapturedVar()->getName();
-  if (Capture.capturesThis())
+  switch (Capture.getCaptureKind()) {
+  case LCK_This:
+  case LCK_StarThis:
     return llvm::StringRef{"this"};
-  return llvm::StringRef{"unknown"};
+  case LCK_ByCopy:
+  case LCK_ByRef:
+  case LCK_VLAType:
+    return Capture.getCapturedVar()->getName();
+  }
+  llvm_unreachable("unhandled capture kind");
 }
 
 template <typename R, typename P>
 std::string joinAndTruncate(R &&Range, size_t MaxLength,
                             P &&GetAsStringFunction) {
   std::string Out;
-  bool IsFirst = true;
+  llvm::raw_string_ostream OS(Out);
+  llvm::ListSeparator Sep(", ");
   for (auto &&Element : Range) {
-    if (!IsFirst)
-      Out.append(", ");
-    else
-      IsFirst = false;
+    OS << Sep;
     auto AsString = GetAsStringFunction(Element);
     if (Out.size() + AsString.size() >= MaxLength) {
-      Out.append("...");
+      OS << "...";
       break;
     }
-    Out.append(AsString);
+    OS << AsString;
   }
+  OS.flush();
   return Out;
 }
 
@@ -812,8 +817,7 @@ private:
       if (Cfg.InlayHints.DefaultArguments && IsDefault) {
         auto SourceText = Lexer::getSourceText(
             CharSourceRange::getTokenRange(Params[I]->getDefaultArgRange()),
-            Callee.Decl->getASTContext().getSourceManager(),
-            Callee.Decl->getASTContext().getLangOpts());
+            AST.getSourceManager(), AST.getLangOpts());
         FormattedDefaultArgs.emplace_back(llvm::formatv(
             "{0} = {1}", Name,
             SourceText.size() > Cfg.InlayHints.TypeNameLimit ? "..."
