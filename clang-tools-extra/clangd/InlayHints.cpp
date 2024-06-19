@@ -11,27 +11,37 @@
 #include "Config.h"
 #include "HeuristicResolver.h"
 #include "ParsedAST.h"
+#include "Protocol.h"
 #include "SourceCode.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/LambdaCapture.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Basic/Lambda.h"
 #include "clang/Basic/OperatorKinds.h"
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
+#include <iterator>
 #include <optional>
 #include <string>
 
@@ -372,6 +382,34 @@ maybeDropCxxExplicitObjectParameters(ArrayRef<const ParmVarDecl *> Params) {
   return Params;
 }
 
+llvm::StringRef getLambdaCaptureName(const LambdaCapture &Capture) {
+  if (Capture.capturesVariable())
+    return Capture.getCapturedVar()->getName();
+  if (Capture.capturesThis())
+    return llvm::StringRef{"this"};
+  return llvm::StringRef{"unknown"};
+}
+
+template <typename R, typename P>
+std::string joinAndTruncate(R &&Range, size_t MaxLength,
+                            P &&GetAsStringFunction) {
+  std::string Out;
+  bool IsFirst = true;
+  for (auto &&Element : Range) {
+    if (!IsFirst)
+      Out.append(", ");
+    else
+      IsFirst = false;
+    auto AsString = GetAsStringFunction(Element);
+    if (Out.size() + AsString.size() >= MaxLength) {
+      Out.append("...");
+      break;
+    }
+    Out.append(AsString);
+  }
+  return Out;
+}
+
 struct Callee {
   // Only one of Decl or Loc is set.
   // Loc is for calls through function pointers.
@@ -422,7 +460,8 @@ public:
     Callee.Decl = E->getConstructor();
     if (!Callee.Decl)
       return true;
-    processCall(Callee, {E->getArgs(), E->getNumArgs()});
+    processCall(Callee, E->getParenOrBraceRange().getEnd(),
+                {E->getArgs(), E->getNumArgs()});
     return true;
   }
 
@@ -495,7 +534,7 @@ public:
             dyn_cast_or_null<CXXMethodDecl>(Callee.Decl))
       if (IsFunctor || Method->hasCXXExplicitFunctionObjectParameter())
         Args = Args.drop_front(1);
-    processCall(Callee, Args);
+    processCall(Callee, E->getRParenLoc(), Args);
     return true;
   }
 
@@ -598,6 +637,15 @@ public:
   }
 
   bool VisitLambdaExpr(LambdaExpr *E) {
+    if (Cfg.InlayHints.LambdaCaptures && E->getCaptureDefault() != LCD_None &&
+        !E->implicit_captures().empty()) {
+      std::string FormattedCaptureList =
+          joinAndTruncate(E->implicit_captures(), Cfg.InlayHints.TypeNameLimit,
+                          [](const LambdaCapture &ImplicitCapture) {
+                            return getLambdaCaptureName(ImplicitCapture);
+                          });
+      addImplicitCaptureHint(E->getCaptureDefaultLoc(), FormattedCaptureList);
+    }
     FunctionDecl *D = E->getCallOperator();
     if (!E->hasExplicitResultType())
       addReturnTypeHint(D, E->hasExplicitParameters()
@@ -709,7 +757,8 @@ public:
 private:
   using NameVec = SmallVector<StringRef, 8>;
 
-  void processCall(Callee Callee, llvm::ArrayRef<const Expr *> Args) {
+  void processCall(Callee Callee, SourceRange LParenOrBraceRange,
+                   llvm::ArrayRef<const Expr *> Args) {
     assert(Callee.Decl || Callee.Loc);
 
     if (!Cfg.InlayHints.Parameters || Args.size() == 0)
@@ -720,6 +769,9 @@ private:
       if (auto *Ctor = dyn_cast<CXXConstructorDecl>(Callee.Decl))
         if (Ctor->isCopyOrMoveConstructor())
           return;
+
+    SmallVector<std::string> FormattedDefaultArgs;
+    bool HasNonDefaultArgs = false;
 
     ArrayRef<const ParmVarDecl *> Params, ForwardedParams;
     // Resolve parameter packs to their forwarded parameter
@@ -755,11 +807,33 @@ private:
       bool NameHint = shouldHintName(Args[I], Name);
       bool ReferenceHint = shouldHintReference(Params[I], ForwardedParams[I]);
 
+      bool IsDefault = isa<CXXDefaultArgExpr>(Args[I]);
+      HasNonDefaultArgs |= !IsDefault;
+      if (Cfg.InlayHints.DefaultArguments && IsDefault) {
+        auto SourceText = Lexer::getSourceText(
+            CharSourceRange::getTokenRange(Params[I]->getDefaultArgRange()),
+            Callee.Decl->getASTContext().getSourceManager(),
+            Callee.Decl->getASTContext().getLangOpts());
+        FormattedDefaultArgs.emplace_back(llvm::formatv(
+            "{0} = {1}", Name,
+            SourceText.size() > Cfg.InlayHints.TypeNameLimit ? "..."
+                                                             : SourceText));
+      }
+
       if (NameHint || ReferenceHint) {
         addInlayHint(Args[I]->getSourceRange(), HintSide::Left,
                      InlayHintKind::Parameter, ReferenceHint ? "&" : "",
                      NameHint ? Name : "", ": ");
       }
+    }
+
+    if (!FormattedDefaultArgs.empty()) {
+      std::string Hint =
+          joinAndTruncate(FormattedDefaultArgs, Cfg.InlayHints.TypeNameLimit,
+                          [](const auto &E) { return E; });
+      addInlayHint(LParenOrBraceRange, HintSide::Left,
+                   InlayHintKind::DefaultArgument,
+                   HasNonDefaultArgs ? ", " : "", Hint, "");
     }
   }
 
@@ -968,6 +1042,8 @@ private:
       CHECK_KIND(Type, DeducedTypes);
       CHECK_KIND(Designator, Designators);
       CHECK_KIND(BlockEnd, BlockEnd);
+      CHECK_KIND(LambdaCapture, LambdaCaptures);
+      CHECK_KIND(DefaultArgument, DefaultArguments);
 #undef CHECK_KIND
     }
 
@@ -1019,6 +1095,11 @@ private:
   void addDesignatorHint(SourceRange R, llvm::StringRef Text) {
     addInlayHint(R, HintSide::Left, InlayHintKind::Designator,
                  /*Prefix=*/"", Text, /*Suffix=*/"=");
+  }
+
+  void addImplicitCaptureHint(SourceRange R, llvm::StringRef Text) {
+    addInlayHint(R, HintSide::Right, InlayHintKind::LambdaCapture,
+                 /*Prefix=*/": ", Text, /*Suffix=*/"");
   }
 
   bool shouldPrintTypeHint(llvm::StringRef TypeName) const noexcept {
