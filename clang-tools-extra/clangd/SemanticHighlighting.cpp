@@ -24,6 +24,7 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Basic/Lambda.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -147,10 +148,9 @@ std::optional<HighlightingKind> kindForDecl(const NamedDecl *D,
   if (auto *VD = dyn_cast<VarDecl>(D)) {
     if (isa<ImplicitParamDecl>(VD)) // e.g. ObjC Self
       return std::nullopt;
-    return VD->isStaticDataMember()
-               ? HighlightingKind::StaticField
-               : VD->isLocalVarDecl() ? HighlightingKind::LocalVariable
-                                      : HighlightingKind::Variable;
+    return VD->isStaticDataMember() ? HighlightingKind::StaticField
+           : VD->isLocalVarDecl()   ? HighlightingKind::LocalVariable
+                                    : HighlightingKind::Variable;
   }
   if (const auto *BD = dyn_cast<BindingDecl>(D))
     return BD->getDeclContext()->isFunctionOrMethod()
@@ -212,6 +212,16 @@ bool isConst(QualType T) {
 bool isConst(const Decl *D) {
   if (llvm::isa<EnumConstantDecl>(D) || llvm::isa<NonTypeTemplateParmDecl>(D))
     return true;
+  if (const auto *FD = llvm::dyn_cast<FieldDecl>(D)) {
+    if (const auto *RD = FD->getParent()) {
+      if (const auto *CRD = dyn_cast<CXXRecordDecl>(RD)) {
+        for (const auto &LC : CRD->captures()) {
+          if (LC.getCapturedVar() == D && LC.getCaptureKind() == LCK_ByCopy)
+            return true;
+        }
+      }
+    }
+  }
   if (llvm::isa<FieldDecl>(D) || llvm::isa<VarDecl>(D) ||
       llvm::isa<MSPropertyDecl>(D) || llvm::isa<BindingDecl>(D)) {
     if (isConst(llvm::cast<ValueDecl>(D)->getType()))
@@ -1520,9 +1530,8 @@ llvm::StringRef toSemanticTokenModifier(HighlightingModifier Modifier) {
   llvm_unreachable("unhandled HighlightingModifier");
 }
 
-std::vector<SemanticTokensEdit>
-diffTokens(llvm::ArrayRef<SemanticToken> Old,
-           llvm::ArrayRef<SemanticToken> New) {
+std::vector<SemanticTokensEdit> diffTokens(llvm::ArrayRef<SemanticToken> Old,
+                                           llvm::ArrayRef<SemanticToken> New) {
   // For now, just replace everything from the first-last modification.
   // FIXME: use a real diff instead, this is bad with include-insertion.
 

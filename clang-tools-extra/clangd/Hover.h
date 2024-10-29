@@ -12,7 +12,9 @@
 #include "ParsedAST.h"
 #include "Protocol.h"
 #include "support/Markup.h"
+#include "clang/Basic/Lambda.h"
 #include "clang/Index/IndexSymbol.h"
+#include "llvm/ADT/StringRef.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -53,6 +55,13 @@ struct HoverInfo {
     std::optional<std::string> Default;
   };
 
+  struct Capture {
+    Capture(llvm::StringRef Name, LambdaCaptureKind Kind)
+        : Name(Name), Kind(Kind) {}
+    llvm::StringRef Name;
+    LambdaCaptureKind Kind;
+  };
+
   /// For a variable named Bar, declared in clang::clangd::Foo::getFoo the
   /// following fields will hold:
   /// - NamespaceScope: clang::clangd::
@@ -85,6 +94,8 @@ struct HoverInfo {
   std::optional<PrintedType> Type;
   /// Set for functions and lambdas.
   std::optional<PrintedType> ReturnType;
+  /// Set for lambdas.
+  std::optional<std::vector<Capture>> Captures;
   /// Set for functions, lambdas and macros with parameters.
   std::optional<std::vector<Param>> Parameters;
   /// Set for all templates(function, class, variable).
@@ -139,6 +150,7 @@ void parseDocumentation(llvm::StringRef Input, markup::Document &Output);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                               const HoverInfo::PrintedType &);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &, const HoverInfo::Capture &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const HoverInfo::Param &);
 inline bool operator==(const HoverInfo::Param &LHS,
                        const HoverInfo::Param &RHS) {

@@ -34,12 +34,14 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/LambdaCapture.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/Lambda.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
@@ -55,6 +57,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -134,6 +137,18 @@ std::string getNamespaceScope(const Decl *D) {
     return printQualifiedName(*ND);
 
   return "";
+}
+
+const CXXRecordDecl *getLambdaRecord(const VarDecl *VD) {
+  auto QT = VD->getType();
+  if (!QT.isNull()) {
+    while (!QT->getPointeeType().isNull())
+      QT = QT->getPointeeType();
+
+    if (const auto *CD = QT->getAsCXXRecordDecl())
+      return CD;
+  }
+  return nullptr;
 }
 
 std::string printDefinition(const Decl *D, PrintingPolicy PP,
@@ -284,14 +299,9 @@ fetchTemplateParameters(const TemplateParameterList *Params,
 const FunctionDecl *getUnderlyingFunction(const Decl *D) {
   // Extract lambda from variables.
   if (const VarDecl *VD = llvm::dyn_cast<VarDecl>(D)) {
-    auto QT = VD->getType();
-    if (!QT.isNull()) {
-      while (!QT->getPointeeType().isNull())
-        QT = QT->getPointeeType();
-
-      if (const auto *CD = QT->getAsCXXRecordDecl())
-        return CD->getLambdaCallOperator();
-    }
+    if (const CXXRecordDecl *RD = getLambdaRecord(VD))
+      return RD->getLambdaCallOperator();
+    return nullptr;
   }
 
   // Non-lambda functions.
@@ -401,6 +411,27 @@ void fillFunctionTypeAndParams(HoverInfo &HI, const Decl *D,
     QT = VD->getType().getDesugaredType(D->getASTContext());
   HI.Type = printType(QT, D->getASTContext(), PP);
   // FIXME: handle variadics.
+
+  if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
+    if (const CXXRecordDecl *RD = MD->getParent(); RD->isLambda()) {
+      HI.Captures.emplace();
+      HI.Captures->reserve(RD->capture_size());
+      for (const auto Capture : RD->captures()) {
+        const auto LCK = Capture.getCaptureKind();
+        switch (LCK) {
+        case LCK_This:
+        case LCK_StarThis:
+          HI.Captures->emplace_back("this", LCK);
+          break;
+        case LCK_ByCopy:
+        case LCK_ByRef:
+        case LCK_VLAType:
+          HI.Captures->emplace_back(Capture.getCapturedVar()->getName(), LCK);
+          break;
+        }
+      }
+    }
+  }
 }
 
 // Non-negative numbers are printed using min digits
@@ -821,6 +852,16 @@ std::string typeAsDefinition(const HoverInfo::PrintedType &PType) {
   return Result;
 }
 
+std::optional<HoverInfo> getLambdaExprHoverContents(const LambdaExpr *LE,
+                                                    ASTContext &ASTCtx,
+                                                    const PrintingPolicy &PP) {
+  HoverInfo HI;
+  HI.Kind = index::SymbolKind::Function;
+  HI.Name = "(lambda)";
+  HI.Definition = "";
+  return HI;
+}
+
 std::optional<HoverInfo> getThisExprHoverContents(const CXXThisExpr *CTE,
                                                   ASTContext &ASTCtx,
                                                   const PrintingPolicy &PP) {
@@ -863,6 +904,17 @@ HoverInfo getDeducedTypeHoverContents(QualType QT, const syntax::Token &Tok,
 
   return HI;
 }
+
+// HoverInfo testHoverLambdaExpr(const LambdaExpr *LE, const PrintingPolicy &PP)
+// {
+//   HoverInfo HI;
+
+//   HI.Name = "string-literal";
+//   HI.Size = (LE->getLength() + 1) * LE->getCharByteWidth() * 8;
+//   HI.Type = LE->getType().getAsString(PP).c_str();
+
+//   return HI;
+// }
 
 HoverInfo getStringLiteralContents(const StringLiteral *SL,
                                    const PrintingPolicy &PP) {
@@ -907,6 +959,10 @@ std::optional<HoverInfo> getHoverContents(const SelectionTree::Node *N,
                                           const PrintingPolicy &PP,
                                           const SymbolIndex *Index) {
   std::optional<HoverInfo> HI;
+
+  if (const LambdaExpr *LE = dyn_cast<LambdaExpr>(E)) {
+    HI = getLambdaExprHoverContents(LE, AST.getASTContext(), PP);
+  }
 
   if (const StringLiteral *SL = dyn_cast<StringLiteral>(E)) {
     // Print the type and the size for string literals
@@ -1466,6 +1522,13 @@ markup::Document HoverInfo::present() const {
         llvm::to_string(*ReturnType));
   }
 
+  if (Captures && !Captures->empty()) {
+    Output.addParagraph().appendText("Captures: ");
+    markup::BulletList &L = Output.addBulletList();
+    for (const auto &Capture : *Captures)
+      L.addItem().addParagraph().appendCode(llvm::to_string(Capture));
+  }
+
   if (Parameters && !Parameters->empty()) {
     Output.addParagraph().appendText("Parameters: ");
     markup::BulletList &L = Output.addBulletList();
@@ -1650,6 +1713,23 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
   OS << T.Type;
   if (T.AKA)
     OS << " (aka " << *T.AKA << ")";
+  return OS;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+                              const HoverInfo::Capture &P) {
+  OS << P.Name;
+  switch (P.Kind) {
+  case LCK_This:
+  case LCK_ByRef:
+    OS << " (by reference)";
+    break;
+  case LCK_StarThis:
+  case LCK_ByCopy:
+  case LCK_VLAType:
+    OS << " (by copy)";
+    break;
+  }
   return OS;
 }
 
