@@ -24,6 +24,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <chrono>
 
 namespace clang {
 namespace clangd {
@@ -91,6 +92,11 @@ public:
       auto IncludingID = Out->getOrCreateID(*IncludingFileEntry),
            IncludedID = Out->getOrCreateID(*File);
       Out->IncludeChildren[IncludingID].push_back(IncludedID);
+      
+      // Count lines of code for this included file if not already counted
+      if (Out->HeaderLOC.find(IncludedID) == Out->HeaderLOC.end()) {
+        Out->HeaderLOC[IncludedID] = countLinesOfCode(*File);
+      }
     }
   }
 
@@ -104,11 +110,37 @@ public:
         BuiltinFile = SM.getFileID(Loc);
         InBuiltinFile = true;
       }
+      // Start timing for this file
+      {
+        FileID CurrentFileID = SM.getFileID(Loc);
+        if (CurrentFileID != SM.getMainFileID()) { // Don't time main file
+          FileStartTimes[CurrentFileID] = std::chrono::steady_clock::now();
+        }
+      }
       break;
     case PPCallbacks::ExitFile: {
       --Level;
       if (PrevFID == BuiltinFile)
         InBuiltinFile = false;
+      
+      // End timing for the previous file
+      if (PrevFID != SM.getMainFileID()) { // Don't time main file
+        auto StartTimeIt = FileStartTimes.find(PrevFID);
+        if (StartTimeIt != FileStartTimes.end()) {
+          auto EndTime = std::chrono::steady_clock::now();
+          auto Duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+              EndTime - StartTimeIt->second).count();
+          
+          // Get the file entry and HeaderID for this file
+          if (auto FileEntry = SM.getFileEntryRefForID(PrevFID)) {
+            auto HeaderID = Out->getOrCreateID(*FileEntry);
+            // Store the parse time
+            Out->HeaderParseTime[HeaderID] = static_cast<unsigned>(Duration);
+          }
+          
+          FileStartTimes.erase(StartTimeIt);
+        }
+      }
       break;
     }
     case PPCallbacks::RenameFile:
@@ -129,6 +161,31 @@ private:
   bool InBuiltinFile = false;
 
   IncludeStructure *Out;
+
+  // Timing tracking for file parsing
+  llvm::DenseMap<FileID, std::chrono::steady_clock::time_point> FileStartTimes;
+  using TimePoint = std::chrono::steady_clock::time_point;
+
+  // Count the lines of code in a file, excluding empty lines and comment-only lines
+  unsigned countLinesOfCode(const FileEntryRef &File) {
+    auto Buffer = SM.getFileManager().getBufferForFile(File);
+    if (!Buffer)
+      return 0;
+    
+    llvm::StringRef Content = Buffer.get()->getBuffer();
+    unsigned LineCount = 0;
+    
+    for (llvm::StringRef Line : llvm::split(Content, '\n')) {
+      // Trim whitespace
+      Line = Line.trim();
+      // Skip empty lines and lines that are just comments
+      if (!Line.empty() && !Line.starts_with("//") && !Line.starts_with("/*")) {
+        LineCount++;
+      }
+    }
+    
+    return LineCount;
+  }
 };
 
 bool isLiteralInclude(llvm::StringRef Include) {
@@ -250,6 +307,31 @@ IncludeStructure::includeDepth(HeaderID Root) const {
     }
   }
   return Result;
+}
+
+unsigned IncludeStructure::getRecursiveLOC(HeaderID ID) const {
+  llvm::DenseSet<HeaderID> Visited;
+  std::function<unsigned(HeaderID)> calculateLOC = [&](HeaderID Current) -> unsigned {
+    if (Visited.contains(Current))
+      return 0; // Avoid infinite recursion on cycles
+    
+    Visited.insert(Current);
+    
+    unsigned TotalLOC = HeaderLOC.lookup(Current);
+    
+    // Add LOC from all children recursively
+    for (const auto &Child : IncludeChildren.lookup(Current)) {
+      TotalLOC += calculateLOC(Child);
+    }
+    
+    return TotalLOC;
+  };
+  
+  return calculateLOC(ID);
+}
+
+unsigned IncludeStructure::getParseTime(HeaderID ID) const {
+  return HeaderParseTime.lookup(ID);
 }
 
 llvm::SmallVector<const Inclusion *>

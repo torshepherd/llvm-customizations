@@ -106,6 +106,7 @@ private:
   void onDocumentDidClose(const DidCloseTextDocumentParams &);
   void onDocumentDidSave(const DidSaveTextDocumentParams &);
   void onAST(const ASTParams &, Callback<std::optional<ASTNode>>);
+  void onIncludeHierarchy(const TextDocumentIdentifier &);
   void onDocumentOnTypeFormatting(const DocumentOnTypeFormattingParams &,
                                   Callback<std::vector<TextEdit>>);
   void onDocumentRangeFormatting(const DocumentRangeFormattingParams &,

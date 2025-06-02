@@ -118,6 +118,14 @@ struct HoverInfo {
   // alphabetical order.
   std::vector<std::string> UsedSymbolNames;
 
+  // Filled when hovering over the #include line. Contains the total lines of
+  // code (recursive) that would be included by this header.
+  std::optional<unsigned> IncludeLOC;
+
+  // Filled when hovering over the #include line. Contains the parse time in
+  // milliseconds that clangd took to process this header during preamble building.
+  std::optional<unsigned> IncludeParseTime;
+
   /// Produce a user-readable information.
   markup::Document present() const;
 };

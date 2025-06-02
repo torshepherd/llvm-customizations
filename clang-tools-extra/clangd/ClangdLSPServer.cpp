@@ -1656,6 +1656,8 @@ void ClangdLSPServer::onAST(const ASTParams &Params,
   Server->getAST(Params.textDocument.uri.file(), Params.range, std::move(CB));
 }
 
+void ClangdLSPServer::onIncludeHierarchy(const TextDocumentIdentifier &File) {}
+
 ClangdLSPServer::ClangdLSPServer(Transport &Transp, const ThreadsafeFS &TFS,
                                  const ClangdLSPServer::Options &Opts)
     : ShouldProfile(/*Period=*/std::chrono::minutes(5),
@@ -1703,6 +1705,7 @@ void ClangdLSPServer::bindMethods(LSPBinder &Bind,
   Bind.method("textDocument/documentHighlight", this, &ClangdLSPServer::onDocumentHighlight);
   Bind.method("workspace/symbol", this, &ClangdLSPServer::onWorkspaceSymbol);
   Bind.method("textDocument/ast", this, &ClangdLSPServer::onAST);
+  // Bind.method("textDocument/includeHierarchy", this, &ClangdLSPServer::onIncludeHierarchy);
   Bind.notification("textDocument/didOpen", this, &ClangdLSPServer::onDocumentDidOpen);
   Bind.notification("textDocument/didClose", this, &ClangdLSPServer::onDocumentDidClose);
   Bind.notification("textDocument/didChange", this, &ClangdLSPServer::onDocumentDidChange);

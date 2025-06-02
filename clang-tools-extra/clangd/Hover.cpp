@@ -1306,6 +1306,22 @@ std::optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
     HI.Definition =
         URIForFile::canonicalize(Inc.Resolved, AST.tuPath()).file().str();
     HI.DefinitionLanguage = "";
+    
+    // Add LOC information if available
+    if (Inc.HeaderID) {
+      auto HeaderID = static_cast<IncludeStructure::HeaderID>(*Inc.HeaderID);
+      auto RecursiveLOC = AST.getIncludeStructure().getRecursiveLOC(HeaderID);
+      if (RecursiveLOC > 0) {
+        HI.IncludeLOC = RecursiveLOC;
+      }
+      
+      // Add parse time information if available
+      auto ParseTime = AST.getIncludeStructure().getParseTime(HeaderID);
+      if (ParseTime > 0) {
+        HI.IncludeParseTime = ParseTime;
+      }
+    }
+    
     maybeAddUsedSymbols(AST, HI, Inc);
     return HI;
   }
@@ -1547,6 +1563,16 @@ markup::Document HoverInfo::present() const {
     }
 
     Output.addCodeBlock(Buffer, DefinitionLanguage);
+  }
+
+  if (IncludeLOC) {
+    Output.addParagraph().appendText(
+        llvm::formatv("Adds {0} lines of code (recursive)", *IncludeLOC).str());
+  }
+
+  if (IncludeParseTime) {
+    Output.addParagraph().appendText(
+        llvm::formatv("Parse time: {0} ms", *IncludeParseTime).str());
   }
 
   if (!UsedSymbolNames.empty()) {

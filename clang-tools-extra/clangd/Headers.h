@@ -167,6 +167,19 @@ public:
   llvm::DenseMap<HeaderID, unsigned>
   includeDepth(HeaderID Root = MainFileID) const;
 
+  // Maps HeaderID to the lines of code count for each file.
+  llvm::DenseMap<HeaderID, unsigned> HeaderLOC;
+
+  // Maps HeaderID to the parse time in milliseconds for each file.
+  llvm::DenseMap<HeaderID, unsigned> HeaderParseTime;
+
+  // Return the total lines of code that would be included by this header,
+  // including all transitive includes recursively.
+  unsigned getRecursiveLOC(HeaderID ID) const;
+
+  // Return the parse time in milliseconds for this header.
+  unsigned getParseTime(HeaderID ID) const;
+
   // Maps HeaderID to the ids of the files included from it.
   llvm::DenseMap<HeaderID, SmallVector<HeaderID>> IncludeChildren;
 
