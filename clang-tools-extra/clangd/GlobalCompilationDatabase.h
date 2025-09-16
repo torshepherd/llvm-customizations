@@ -55,7 +55,9 @@ public:
   /// Makes a guess at how to build a file.
   /// The default implementation just runs clang on the file.
   /// Clangd should treat the results as unreliable.
-  virtual tooling::CompileCommand getFallbackCommand(PathRef File) const;
+  virtual tooling::CompileCommand
+  getFallbackCommand(PathRef File,
+                     const llvm::StringRef LanguageGuess = "null") const;
 
   /// If the CDB does any asynchronous work, wait for it to complete.
   /// For use in tests.

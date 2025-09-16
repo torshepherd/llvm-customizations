@@ -26,6 +26,7 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/TargetParser/Host.h"
@@ -54,15 +55,26 @@ void actOnAllParentDirectories(PathRef FileName,
 
 } // namespace
 
-tooling::CompileCommand
-GlobalCompilationDatabase::getFallbackCommand(PathRef File) const {
+tooling::CompileCommand GlobalCompilationDatabase::getFallbackCommand(
+    PathRef File, const llvm::StringRef LanguageGuess) const {
   std::vector<std::string> Argv = {"clang"};
   // Clang treats .h files as C by default and files without extension as linker
   // input, resulting in unhelpful diagnostics.
   // Parsing as Objective C++ is friendly to more cases.
   auto FileExtension = llvm::sys::path::extension(File);
-  if (FileExtension.empty() || FileExtension == ".h")
-    Argv.push_back("-xobjective-c++-header");
+  if (FileExtension.empty() || FileExtension == ".h") {
+    if (LanguageGuess == "c") {
+      Argv.push_back("-xc-header");
+    } else if (LanguageGuess == "cpp") {
+      Argv.push_back("-xc++-header");
+    } else if (LanguageGuess == "objective-c") {
+      Argv.push_back("-xobjective-c-header");
+    } else if (LanguageGuess == "objective-cpp") {
+      Argv.push_back("-xobjective-c++-header");
+    } else {
+      Argv.push_back("-xobjective-c++-header");
+    }
+  }
   Argv.push_back(std::string(File));
   tooling::CompileCommand Cmd(llvm::sys::path::parent_path(File),
                               llvm::sys::path::filename(File), std::move(Argv),

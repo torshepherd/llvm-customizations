@@ -52,6 +52,10 @@ struct ParseInputs {
   std::string Contents;
   // Version identifier for Contents, provided by the client and opaque to us.
   std::string Version = "null";
+  // Language identifier provided by the client. Some editors implement language
+  // detection; this is the result of that. Helps us guess language of files not
+  // in compilation database.
+  std::string ClientLanguageId = "null";
   // Prevent reuse of the cached preamble/AST. Slow! Useful to workaround
   // clangd's assumption that missing header files will stay missing.
   bool ForceRebuild = false;
