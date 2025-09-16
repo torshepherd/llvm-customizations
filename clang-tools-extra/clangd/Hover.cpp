@@ -1274,7 +1274,24 @@ void maybeAddUsedSymbols(ParsedAST &AST, HoverInfo &HI, const Inclusion &Inc) {
                            HI.UsedSymbolNames.end());
 }
 
-} // namespace
+// void maybeAddIncludedLines(ParsedAST &AST, const include_cleaner::Header
+// &Inc,
+//                            HoverInfo &HI) {
+//   if (Inc.Resolved.empty() || Inc.HashLine != HI.SymRange->start.line)
+//     return;
+
+//   // FIXME: This is a hack to get the number of lines included. We should
+//   // instead use the preprocessor's #line directive to get the number of
+//   lines
+//   // included.
+//   auto &Context = AST.getASTContext();
+//   auto &SourceManager = AST.getSourceManager();
+//   auto &Tokens = AST.getTokens();
+//   auto PP = AST.getPreprocessor();
+//   auto Includes = AST.getIncludeStructure();
+//   auto CurLoc =
+//       SourceManager.getLocForStartOfFile(SourceManager.getMainFileID());
+// } // namespace
 
 std::optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
                                   const format::FormatStyle &Style,
@@ -1323,6 +1340,7 @@ std::optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
     }
     
     maybeAddUsedSymbols(AST, HI, Inc);
+    // maybeAddIncludedLines(AST, Inc, HI);
     return HI;
   }
 
@@ -1591,6 +1609,14 @@ markup::Document HoverInfo::present() const {
       P.appendText(std::to_string(UsedSymbolNames.size() - Front.size()));
       P.appendText(" more");
     }
+  }
+
+  if (IncludedLines.has_value()) {
+    Output.addRuler();
+    markup::Paragraph &P = Output.addParagraph();
+    P.appendText("includes ");
+    P.appendText(std::to_string(IncludedLines.value()));
+    P.appendText(" lines after preprocessing");
   }
 
   return Output;

@@ -123,8 +123,13 @@ struct HoverInfo {
   std::optional<unsigned> IncludeLOC;
 
   // Filled when hovering over the #include line. Contains the parse time in
-  // milliseconds that clangd took to process this header during preamble building.
+  // milliseconds that clangd took to process this header during preamble
+  // building.
   std::optional<unsigned> IncludeParseTime;
+
+  // Filled when hovering over the #include line. Contains the number of
+  // fully-preprocessed lines this include contributes to the overall file
+  std::optional<size_t> IncludedLines;
 
   /// Produce a user-readable information.
   markup::Document present() const;
