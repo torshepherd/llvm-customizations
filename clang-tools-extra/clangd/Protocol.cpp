@@ -908,6 +908,7 @@ llvm::json::Value toJSON(const Command &C) {
 const llvm::StringLiteral CodeAction::QUICKFIX_KIND = "quickfix";
 const llvm::StringLiteral CodeAction::REFACTOR_KIND = "refactor";
 const llvm::StringLiteral CodeAction::INFO_KIND = "info";
+const llvm::StringLiteral CodeAction::FIXALL_KIND = "fixAll";
 
 llvm::json::Value toJSON(const CodeAction &CA) {
   auto CodeAction = llvm::json::Object{{"title", CA.title}};
