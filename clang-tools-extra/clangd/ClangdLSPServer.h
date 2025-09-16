@@ -103,6 +103,7 @@ private:
   void onDocumentDidClose(const DidCloseTextDocumentParams &);
   void onDocumentDidSave(const DidSaveTextDocumentParams &);
   void onAST(const ASTParams &, Callback<std::optional<ASTNode>>);
+  void onMatchAST(const MatchASTParams &, Callback<std::vector<ASTNode>>);
   void onDocumentOnTypeFormatting(const DocumentOnTypeFormattingParams &,
                                   Callback<std::vector<TextEdit>>);
   void onDocumentRangeFormatting(const DocumentRangeFormattingParams &,

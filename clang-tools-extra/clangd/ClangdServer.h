@@ -422,6 +422,11 @@ public:
   void getAST(PathRef File, std::optional<Range> R,
               Callback<std::optional<ASTNode>> CB);
 
+  /// Parse and perform AST matching using the given MatchExpression on the
+  /// entire file.
+  void getMatchingAST(PathRef File, llvm::StringRef MatchExpression,
+                      Callback<std::vector<ASTNode>> CB);
+
   /// Runs an arbitrary action that has access to the AST of the specified file.
   /// The action will execute on one of ClangdServer's internal threads.
   /// The AST is only valid for the duration of the callback.

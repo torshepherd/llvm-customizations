@@ -2001,6 +2001,17 @@ struct ASTParams {
 };
 bool fromJSON(const llvm::json::Value &, ASTParams &, llvm::json::Path);
 
+/// Payload for textDocument/matchAst request.
+/// This request is a clangd extension.
+struct MatchASTParams {
+  /// The text document.
+  TextDocumentIdentifier textDocument;
+
+  /// The matcher expression to be matched against
+  std::string matchExpression;
+};
+bool fromJSON(const llvm::json::Value &, ASTParams &, llvm::json::Path);
+
 /// Simplified description of a clang AST node.
 /// This is clangd's internal representation of C++ code.
 struct ASTNode {

@@ -33,8 +33,11 @@
 #include "support/Context.h"
 #include "support/Logger.h"
 #include "support/MemoryTree.h"
+#include "support/Path.h"
 #include "support/ThreadsafeFS.h"
 #include "support/Trace.h"
+#include "clang/ASTMatchers/Dynamic/Parser.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/Stack.h"
 #include "clang/Format/Format.h"
 #include "clang/Lex/Preprocessor.h"
@@ -62,8 +65,8 @@ namespace clangd {
 namespace {
 
 // Tracks number of times a tweak has been offered.
-static constexpr trace::Metric TweakAvailable(
-    "tweak_available", trace::Metric::Counter, "tweak_id");
+static constexpr trace::Metric
+    TweakAvailable("tweak_available", trace::Metric::Counter, "tweak_id");
 
 // Update the FileIndex with new ASTs and plumb the diagnostics responses.
 struct UpdateIndexCallbacks : public ParsingCallbacks {
@@ -1088,6 +1091,28 @@ void ClangdServer::getAST(PathRef File, std::optional<Range> R,
         if (!Success)
           CB(std::nullopt);
       };
+  WorkScheduler->runWithAST("GetAST", File, std::move(Action));
+}
+
+void ClangdServer::getMatchingAST(PathRef File, llvm::StringRef MatchExpression,
+                                  Callback<std::vector<ASTNode>> CB) {
+  auto Action = [MatchExpression, CB(std::move(CB))](
+                    llvm::Expected<InputsAndAST> Inputs) mutable {
+    if (!Inputs)
+      return CB(Inputs.takeError());
+    if (MatchExpression.empty())
+      return CB(std::vector<ASTNode>());
+    ast_matchers::dynamic::Diagnostics Diag;
+    std::optional<ast_matchers::dynamic::DynTypedMatcher> Matcher =
+        ast_matchers::dynamic::Parser::parseMatcherExpression(
+            MatchExpression, nullptr, nullptr, &Diag);
+    if (!Matcher) {
+      std::string ErrStr;
+      llvm::raw_string_ostream OS(ErrStr);
+      Diag.printToStreamFull(OS);
+      return CB(error(OS.str()));
+    }
+  };
   WorkScheduler->runWithAST("GetAST", File, std::move(Action));
 }
 
