@@ -117,12 +117,24 @@ Improvements to clang-tidy
 New checks
 ^^^^^^^^^^
 
-- New :doc:`bugprone-capturing-this-in-member-variable
-  <clang-tidy/checks/bugprone/capturing-this-in-member-variable>` check.
+- New :doc:`bugprone-casting-through-void
+  <clang-tidy/checks/bugprone/casting-through-void>` check.
 
   Finds lambda captures and ``bind`` function calls that capture the ``this``
   pointer and store it as class members without handle the copy and move
   constructors and the assignments.
+
+- New :doc:`bugprone-misleading-setter-of-reference
+  <clang-tidy/checks/bugprone/misleading-setter-of-reference>` check.
+
+  Finds setter-like member functions that take a pointer parameter and set a
+  reference member of the same class with the pointed value.
+
+- New :doc:`bugprone-incorrect-enable-if
+  <clang-tidy/checks/bugprone/incorrect-enable-if>` check.
+
+  Detects incorrect usages of ``std::enable_if`` that don't name the nested
+  ``type`` type.
 
 - New :doc:`bugprone-misleading-setter-of-reference
   <clang-tidy/checks/bugprone/misleading-setter-of-reference>` check.
@@ -153,6 +165,11 @@ New checks
 
   Finds uses of ``std::lock_guard`` and suggests replacing them with C++17's
   alternative ``std::scoped_lock``.
+
+- New :doc:`performance-vector-initializer-list
+  <clang-tidy/checks/performance/vector-initializer-list>` check.
+
+  FIXME: add release notes.
 
 - New :doc:`portability-avoid-pragma-once
   <clang-tidy/checks/portability/avoid-pragma-once>` check.
