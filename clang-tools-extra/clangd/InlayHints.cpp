@@ -437,6 +437,53 @@ public:
     // SuppressDefaultTemplateArgs (set by default) to have an effect.
   }
 
+  // FIXME: This doesn't work right
+  // bool VisitDeducedTemplateSpecializationTypeLoc(
+  //     DeducedTemplateSpecializationTypeLoc TL) {
+  //   auto *T = TL.getTypePtr();
+  //   if (!T)
+  //     return true;
+  //   // auto *Record = T->getDeducedType();
+  //   // if (!Record)
+  //   //   return true;
+  //   auto p1 = std::vector<double>{1.0};
+  //   auto p2 = std::vector{1.0};
+  //   if (true) {
+  //     // addInlayHint(TL.getSourceRange(), HintSide::Right,
+  //     InlayHintKind::Type,
+  //     //              /*Prefix=*/"<",
+  //     //
+  //     T->getTemplateName().getAsTemplateDecl()->getDescribedTemplateParams(),
+  //     //              /*Suffix=*/">");
+  //     // switch (T->getTemplateName().getKind()) {
+  //     // case TemplateName::Template:
+  //     // case TemplateName::OverloadedTemplate:
+  //     // case TemplateName::AssumedTemplate:
+  //     // case TemplateName::QualifiedTemplate:
+  //     // case TemplateName::DependentTemplate:
+  //     // case TemplateName::SubstTemplateTemplateParm:
+  //     // case TemplateName::SubstTemplateTemplateParmPack:
+  //     // case TemplateName::UsingTemplate:
+  //     //   break;
+  //     // }
+  //     llvm::SmallVector<std::string> ParamNames;
+  //     // llvm::transform(*(Record->getDescribedTemplateParams()),
+  //     //                 std::back_inserter(ParamNames), [](const NamedDecl
+  //     *P)
+  //     //                 {
+  //     //                   return P->getDeclName().getAsString();
+  //     //                 });
+  //     llvm::transform(
+  //         *(T->getTemplateName().getAsTemplateDecl()->getTemplateParameters()),
+  //         std::back_inserter(ParamNames),
+  //         [](const NamedDecl *P) { return P->getDeclName().getAsString(); });
+  //     auto Hint = llvm::join(ParamNames, ", ");
+  //     addInlayHint(TL.getSourceRange(), HintSide::Right, InlayHintKind::Type,
+  //                  /*Prefix=*/"<", Hint, /*Suffix=*/">");
+  //   }
+  //   return true;
+  // }
+
   bool VisitTypeLoc(TypeLoc TL) {
     if (const auto *DT = llvm::dyn_cast<DecltypeType>(TL.getType()))
       if (QualType UT = DT->getUnderlyingType(); !UT->isDependentType())
@@ -490,6 +537,7 @@ public:
 
   bool VisitCXXThisExpr(CXXThisExpr *CTE) {
     if (Cfg.InlayHints.ImplicitThis && CTE->isImplicit())
+      // FIXME: make sure this hint is to the right of parameter hints
       addInlayHint(CTE->getLocation(), HintSide::Left,
                    InlayHintKind::ImplicitThis, "", "this->", "");
     return true;
@@ -554,8 +602,13 @@ public:
     if (Cfg.InlayHints.BlockEnd && D->isThisDeclarationADefinition()) {
       // We use `printName` here to properly print name of ctor/dtor/operator
       // overload.
-      if (const Stmt *Body = D->getBody())
-        addBlockEndHint(Body->getSourceRange(), "", printName(AST, *D), "");
+      if (const Stmt *Body = D->getBody()) {
+        // Tokens.(D->getSourceRange())
+        auto Spelled = Tokens.spelledForExpanded(
+            Tokens.expandedTokens(D->getSourceRange()));
+        if (Spelled && !Spelled->empty())
+          addBlockEndHint(Body->getSourceRange(), "", printName(AST, *D), "");
+      }
     }
     return true;
   }
@@ -644,6 +697,21 @@ public:
   bool VisitLambdaExpr(LambdaExpr *E) {
     if (Cfg.InlayHints.LambdaCaptures && E->getCaptureDefault() != LCD_None &&
         !E->implicit_captures().empty()) {
+      // std::string FormattedCaptureList;
+      // bool NeedsComma = false;
+      // for (const auto &ImplicitCapture : E->implicit_captures()) {
+      //   if (NeedsComma)
+      //     FormattedCaptureList += ", ";
+      //   NeedsComma = true;
+      //   auto Name = getLambdaCaptureName(ImplicitCapture);
+      //   if (FormattedCaptureList.size() + Name.size() <
+      //       Cfg.InlayHints.TypeNameLimit)
+      //     FormattedCaptureList += Name;
+      //   else {
+      //     FormattedCaptureList += "...";
+      //     break;
+      //   }
+      // }
       std::string FormattedCaptureList =
           joinAndTruncate(E->implicit_captures(), Cfg.InlayHints.TypeNameLimit,
                           [](const LambdaCapture &ImplicitCapture) {
