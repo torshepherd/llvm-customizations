@@ -16,6 +16,7 @@
 #include "TestTU.h"
 #include "index/MemIndex.h"
 #include "clang/AST/Attr.h"
+#include "clang/Basic/Lambda.h"
 #include "clang/Format/Format.h"
 #include "clang/Index/IndexSymbol.h"
 #include "llvm/ADT/StringRef.h"
@@ -5012,6 +5013,111 @@ TEST(Hover, FunctionParameters) {
     EXPECT_EQ(H->TemplateParameters, Expected.TemplateParameters);
     EXPECT_EQ(H->SymRange, Expected.SymRange);
     EXPECT_EQ(H->Value, Expected.Value);
+  }
+}
+
+TEST(Hover, LambdaCaptureDefault) {
+  // Basic test to verify lambda capture default hover structure
+  // This test will be expanded once the feature is implemented
+  struct {
+    const char *const Code;
+    const std::function<void(HoverInfo &)> ExpectedBuilder;
+  } Cases[] = {
+      // Lambda capture by copy (=) - basic structure test
+      {R"cpp(
+        void foo() {
+          int x, y;
+          auto lambda = [[[^=]]] { 
+            return x + y; 
+          };
+        }
+        )cpp",
+       [](HoverInfo &HI) {
+         // For now, just test that we get some hover info
+         // The exact structure will be implemented later
+         HI.Name = "(lambda)";
+         HI.Kind = index::SymbolKind::Function;
+       }},
+  };
+
+  Config Cfg;
+  Cfg.Hover.ShowAKA = false;
+  WithContextValue WithCfg(Config::Key, std::move(Cfg));
+
+  for (const auto &C : Cases) {
+    Annotations Code(C.Code);
+    auto TU = TestTU::withCode(Code.code());
+    TU.ExtraArgs.push_back("-std=c++17");
+    auto AST = TU.build();
+
+    for (auto [Index, Position] : llvm::enumerate(Code.points())) {
+      auto H = getHover(AST, Position, format::getLLVMStyle(), nullptr);
+
+      if (C.ExpectedBuilder) {
+        ASSERT_TRUE(H) << "Expected hover at position " << Index;
+        HoverInfo Expected;
+        Expected.SymRange = Code.range();
+        C.ExpectedBuilder(Expected);
+
+        EXPECT_EQ(H->Name, Expected.Name);
+        EXPECT_EQ(H->Kind, Expected.Kind);
+      }
+    }
+  }
+}
+
+TEST(Hover, LambdaExpressionGeneral) {
+  // Basic test for general lambda hover (not on capture default)
+  // This will be expanded once the basic lambda hover works
+  struct {
+    const char *const Code;
+    const std::function<void(HoverInfo &)> ExpectedBuilder;
+  } Cases[] = {
+      // General lambda hover (not on capture default)
+      {R"cpp(
+        void foo() {
+          int x, y;
+          auto [[^lambda]] = [=] { 
+            return x + y; 
+          };
+        }
+        )cpp",
+       [](HoverInfo &HI) {
+         HI.NamespaceScope = "";
+         HI.LocalScope = "foo::";
+         HI.Name = "lambda";
+         HI.Kind = index::SymbolKind::Variable;
+         HI.Definition = "auto lambda = [=] {}";
+         HI.Type = "class (lambda)";
+         HI.ReturnType = "int";
+       }},
+  };
+
+  Config Cfg;
+  Cfg.Hover.ShowAKA = false;
+  WithContextValue WithCfg(Config::Key, std::move(Cfg));
+
+  for (const auto &C : Cases) {
+    Annotations Code(C.Code);
+    auto TU = TestTU::withCode(Code.code());
+    TU.ExtraArgs.push_back("-std=c++17");
+    auto AST = TU.build();
+
+    for (auto [Index, Position] : llvm::enumerate(Code.points())) {
+      auto H = getHover(AST, Position, format::getLLVMStyle(), nullptr);
+      ASSERT_TRUE(H) << "Expected hover at position " << Index;
+      HoverInfo Expected;
+      Expected.SymRange = Code.range();
+      C.ExpectedBuilder(Expected);
+
+      EXPECT_EQ(H->NamespaceScope, Expected.NamespaceScope);
+      EXPECT_EQ(H->LocalScope, Expected.LocalScope);
+      EXPECT_EQ(H->Name, Expected.Name);
+      EXPECT_EQ(H->Kind, Expected.Kind);
+      EXPECT_EQ(H->Definition, Expected.Definition);
+      EXPECT_EQ(H->Type, Expected.Type);
+      EXPECT_EQ(H->ReturnType, Expected.ReturnType);
+    }
   }
 }
 
